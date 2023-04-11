@@ -2,7 +2,7 @@ package com.digdes.school;
 
 import java.util.*;
 
-public class Data { // инкапсулировать
+class Data {
     static final List<Map<String, Object>> dataTable = new ArrayList<>();
     static final Set<String> columns = Set.of("id", "lastName", "age", "cost", "active");
 }

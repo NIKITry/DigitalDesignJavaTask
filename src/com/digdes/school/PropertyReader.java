@@ -7,7 +7,7 @@ import java.util.stream.Stream;
 import static com.digdes.school.Commands.*;
 import static com.digdes.school.Operations.*;
 
-public class PropertyReader {
+class PropertyReader {
     private static final char propertyBracket = '\'';
     private static final int readSingle = 1;
     private static final int readNormal = 0;
@@ -15,11 +15,11 @@ public class PropertyReader {
     private final List<ConditionContainer> properties = new ArrayList<>();
 
 
-    private StringBuilder incomingRequest;
     private StringBuilder beforeWhere;
     private StringBuilder afterWhere;
     private int stateReaderProperties = 0;
     private String originRequest;
+    private String originPartOfCond;
 
 
     String originalStringPropertyVal;
@@ -30,25 +30,31 @@ public class PropertyReader {
     }
 
     public List<ConditionContainer> readRequestProperties(String[] request) {
+        StringBuilder incomingRequest;
         if (stateReaderProperties == readSingle) {
             incomingRequest = getStringBuilder(request);
         } else {
             cutTheRequest(request);
             incomingRequest = beforeWhere;
         }
+        if (request[0].equals(DELETE) || request[0].equals(SELECT)) return null;
         originRequest = originRequest.replaceAll(" ", "");
         if (!request[0].equals(INSERT)) {
             String splitBy = getStrByRegex("where", originRequest);
             if (splitBy.isEmpty()) {
-                originalStringPropertyVal = fillForOriginValues(originRequest);
+                originalStringPropertyVal = fillForOriginValuesProp(originRequest);
             } else {
                 String[] temp = originRequest.split(splitBy);
-                originalStringPropertyVal = fillForOriginValues(temp[0]);
-                originalStringCondVal = fillForOriginValues(temp[1]);
+                originalStringPropertyVal = fillForOriginValuesProp(temp[0]);
+                if (stateReaderProperties == readSingle) {
+                    originalStringCondVal = fillForOriginValuesConds(originPartOfCond);
+                } else {
+                    originalStringCondVal = fillForOriginValuesConds(temp[1]);
+                }
             }
         } else {
-            originalStringPropertyVal = fillForOriginValues(originRequest);
-            originalStringCondVal = fillForOriginValues(originRequest);
+            originalStringPropertyVal = fillForOriginValuesProp(originRequest);
+            originalStringCondVal = fillForOriginValuesConds(originRequest);
         }
 
         if (request[0].equals(DELETE) || request[0].equals(SELECT)) return null;
@@ -85,7 +91,7 @@ public class PropertyReader {
             }
             if (!wasOpenBracket && !wasCloseBracket || (wasCloseBracket && currChar == '=')
                     || (i < incomingRequest.length() - 1 && currChar == ','))
-                continue; // нужное ли условие?
+                continue;
 
             if (i == incomingRequest.length() - 2 && isValueWriting && currChar == ','
                     && incomingRequest.charAt(nextPos) == propertyBracket)
@@ -106,6 +112,7 @@ public class PropertyReader {
                     if (stateReaderProperties == readSingle) {
                         value = new StringBuilder(originalStringCondVal);
                     } else {
+                        if (originalStringPropertyVal.isEmpty()) throw new IllegalArgumentException();
                         value = new StringBuilder(originalStringPropertyVal);
                     }
 
@@ -140,27 +147,21 @@ public class PropertyReader {
         return res;
     }
 
-    private String fillForOriginValues(String request) {
-        String value = getStrByRegex("(?<='lastName'=).*?(?=,)", request);
+    private String fillForOriginValuesConds(String request) {
+        String value = getStrByRegex("(?<='lastName'=').*?(?=')", request);
         if (value.isEmpty())
-            value = getStrByRegex("(?<='lastName'=).*(?=and)", request);
-        if (value.isEmpty())
-            value = getStrByRegex("(?<='lastName'=).*(?=or)", request);
-        if (value.isEmpty())
-            value = getStrByRegex("(?<='lastName'=).*", request);
-        if (value.isEmpty())
-            value = getStrByRegex("(?<='lastName'!=).*(?=,)", request);
-        if (value.isEmpty())
-            value = getStrByRegex("(?<='lastName'!=).*(?=and)", request);
-        if (value.isEmpty())
-            value = getStrByRegex("(?<='lastName'!=).*(?=or)", request);
-        if (value.isEmpty())
-            value = getStrByRegex("(?<='lastName'!=).*", request);
+            value = getStrByRegex("(?<='lastName'!=').*(?=')", request);
         if (value.isEmpty())
             value = getStrByRegex("(?<='lastName'ilike').*?(?=')", request);
         if (value.isEmpty())
             value = getStrByRegex("(?<='lastName'like').*?(?=')", request);
-        // рассмотреть все варианты и проверить их.
+        return value.trim();
+    }
+
+    private String fillForOriginValuesProp(String request) {
+        String value = getStrByRegex("(?<='lastName'=').*?(?=',)", request);
+        if (value.isEmpty())
+            value = getStrByRegex("(?<='lastName'=').*(?=')", request);
         return value.trim();
     }
 
@@ -199,12 +200,17 @@ public class PropertyReader {
         String strCond = afterWhere.toString();
         List<List<ConditionContainer>> allConditions = new ArrayList<>();
         List<ConditionContainer> partsOfConditions = new ArrayList<>();
-        var separatedArrForOr = strCond.split("or");
+        var separatedArrForOr = strCond.split("or'");
+        if (separatedArrForOr.length != 1) separatedArrForOr = glueSymbols(separatedArrForOr);
         setReaderState(readSingle);
         for (String str : separatedArrForOr) {
-            var temp = str.split("and");
-            for (String el : temp) {
-                partsOfConditions.addAll(readRequestProperties(new String[]{el}));
+            var separatedArrForAnd = str.split("and'");
+            if (separatedArrForAnd.length != 1) separatedArrForAnd = glueSymbols(separatedArrForAnd);
+            for (String el : separatedArrForAnd) {
+                originPartOfCond = getStrByRegex(el, originRequest);
+                var listToAdd = readRequestProperties(new String[]{el});
+                if (el.contains("null")) throw new IllegalArgumentException();
+                partsOfConditions.addAll(listToAdd);
             }
             allConditions.add(new ArrayList<>(partsOfConditions));
             partsOfConditions.clear();
@@ -212,6 +218,25 @@ public class PropertyReader {
         setReaderState(readNormal);
         return allConditions;
     }
+
+    private String[] glueSymbols(String[] arr) {
+        StringBuilder appender = new StringBuilder();
+        String[] res = new String[arr.length];
+        int index = -1;
+        for (String str : arr) {
+            index++;
+            if (index == 0) {
+                res[index] = str;
+                continue;
+            }
+            appender.append(propertyBracket);
+            appender.append(str);
+            res[index] = appender.toString();
+            appender.setLength(0);
+        }
+        return res;
+    }
+
 
     private void setReaderState(int code) {
         stateReaderProperties = code;

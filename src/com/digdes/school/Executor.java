@@ -10,8 +10,7 @@ import com.digdes.school.PropertyReader.*;
 import static com.digdes.school.Commands.*;
 import static com.digdes.school.Operations.*;
 
-public class Executor implements Function<String, List<Map<String, Object>>> {
-    List<Map<String, Object>> data = Data.dataTable;
+class Executor implements Function<String, List<Map<String, Object>>> {
 
     private PropertyReader reader;
 
@@ -38,7 +37,7 @@ public class Executor implements Function<String, List<Map<String, Object>>> {
             }
             case UPDATE, SELECT, DELETE -> conditions = reader.readConditions(firstRequestWord);
         }
-        if (conditions == null && firstRequestWord.equals(UPDATE)) { // проверку на null заменить на empty collection
+        if (conditions == null && firstRequestWord.equals(UPDATE)) {
             return resolverForUpdateWithoutCond(properties);
         }
         return commonResolver(conditions, firstRequestWord, properties);
@@ -108,14 +107,15 @@ public class Executor implements Function<String, List<Map<String, Object>>> {
 
     private boolean isRightConditionForRow(ConditionContainer cond, Map<String, Object> row) {
         final String property = cond.getProperty();
-        final var propertyValue = row.get(property);
         final var condValue = cond.getValue();
+        var propertyValue = row.get(property);
         switch (cond.getOperator()) {
             case equals, notEquals, lessThan, greaterThan, lessThanStrictly, greaterThanStrictly -> {
                 return compareResolver(property, propertyValue, condValue, cond.getOperator());
             }
             case like, ilike -> {
                 if (!property.equals("lastName")) throw new IllegalArgumentException();
+                if (propertyValue == null) propertyValue = "null";
                 String innerValue;
                 String clonePrValue = ((String) propertyValue);
                 boolean isIlike = cond.getOperator().equals("ilike");
@@ -123,39 +123,34 @@ public class Executor implements Function<String, List<Map<String, Object>>> {
                     clonePrValue = ((String) propertyValue).toLowerCase();
                 }
                 if (Pattern.matches("%(.*?)%", condValue)) {
-                    innerValue = subStringByRegEx("(?<=%)(.*?)(?=%)", condValue, false);
+                    innerValue = subStringByRegEx("(?<=%)(.*?)(?=%)", condValue);
                     if (isIlike) innerValue = innerValue.toLowerCase();
                     return (clonePrValue).contains(innerValue);
                 }
                 if (Pattern.matches("^%.+", condValue)) {
-                    innerValue = subStringByRegEx("(?<=%).*", condValue, false);
-                    if (isIlike) innerValue = innerValue.toLowerCase();
-                    return (clonePrValue).startsWith(innerValue);
-                }
-                if (Pattern.matches(".+%$", condValue)) {
-                    innerValue = subStringByRegEx("(.*)(?=%)", condValue, false);
+                    innerValue = subStringByRegEx("(?<=%).*", condValue);
                     if (isIlike) innerValue = innerValue.toLowerCase();
                     return (clonePrValue).endsWith(innerValue);
                 }
-                return clonePrValue.equals(condValue);
+                if (Pattern.matches(".+%$", condValue)) {
+                    innerValue = subStringByRegEx("(.*)(?=%)", condValue);
+                    if (isIlike) innerValue = innerValue.toLowerCase();
+                    return (clonePrValue).startsWith(innerValue);
+                }
+                return isIlike ? clonePrValue.equals(condValue.toLowerCase()) : clonePrValue.equals(condValue);
             }
             default -> throw new IllegalArgumentException();
         }
     }
 
-    private String subStringByRegEx(String regex, String str, boolean caseInsensitive) {
-        Pattern p;
-        if (caseInsensitive) {
-            p = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
-        } else {
-            p = Pattern.compile(regex);
-        }
+    private String subStringByRegEx(String regex, String str) {
+        Pattern p = Pattern.compile(regex);
         var m = p.matcher(str);
-        String res = "";
+        StringBuilder res = new StringBuilder();
         while (m.find()) {
-            res = m.group();
+            res.append(m.group());
         }
-        return res;
+        return res.toString();
     }
 
 
@@ -178,6 +173,10 @@ public class Executor implements Function<String, List<Map<String, Object>>> {
         }
         switch (property) {
             case "age", "id", "cost" -> {
+                if (propertyValue == null && op.equals(notEquals) && condValue.equals("0"))
+                    return true;
+                if (propertyValue == null)
+                    return false;
                 final int res;
                 if (property.equals("cost")) {
                     res = Double.compare((Double) propertyValue, Double.parseDouble(condValue));
@@ -185,13 +184,20 @@ public class Executor implements Function<String, List<Map<String, Object>>> {
                     res = Long.compare((Long) propertyValue, Long.parseLong(condValue));
                 }
                 if (!isStrictly) return (res == expectedRes || res == 0);
+                if (op.equals(notEquals)) return res != 0;
                 return res == expectedRes;
             }
             case "lastName" -> {
+                if (propertyValue == null)
+                    return false;
                 operatorValidate(op);
-                return propertyValue.equals(condValue);
+                boolean equals = propertyValue.equals(condValue);
+                if (op.equals(notEquals)) return !equals;
+                return equals;
             }
             case "active" -> {
+                if (propertyValue == null)
+                    return false;
                 operatorValidate(op);
                 if (expectedRes == -1) return propertyValue != valueOfBoolean(condValue);
                 return propertyValue == valueOfBoolean(condValue);
@@ -224,12 +230,16 @@ public class Executor implements Function<String, List<Map<String, Object>>> {
     }
 
     private void putOrUpdateKeyValueIfCorrect(String key, String value, Map<String, Object> row) {
+        if (value.equals("null")) {
+            row.put(key, null);
+            return;
+        }
         switch (key) {
             case "id", "age" -> row.put(key, Long.parseLong(value));
             case "cost" -> row.put(key, Double.parseDouble(value));
             case "active" -> row.put(key, valueOfBoolean(value));
             case "lastName" -> row.put(key, value);
-            default -> throw new IllegalArgumentException(); // может ли быть тут?
+            default -> throw new IllegalArgumentException();
         }
     }
 
