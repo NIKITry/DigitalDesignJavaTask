@@ -1,9 +1,8 @@
 package com.digdes.school;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class JavaSchoolStarter {
@@ -18,11 +17,31 @@ public class JavaSchoolStarter {
         JavaSchoolStarter test = new JavaSchoolStarter();
 
 
-//        System.out.println(test.execute("insert values 'lastName'='vio', 'age'=10, 'cost'=9.6, 'active' = true ,  'id'=1"));
-//        System.out.println(test.execute("insert values 'lastName'='chris', 'age'=10, 'cost'=9.6, 'active' = true ,  'id'=2"));
-//        System.out.println(test.execute("insert values 'lastName'='egor', 'age'=10, 'cost'=9.6, 'active' = true ,  'id'=16"));
-//        System.out.println(test.execute("insert values 'lastName'='kirill', 'age'=10, 'cost'=9.9, 'active' = true ,  'id'=4"));
-        System.out.println(test.execute("select where 'lastName'!=vio or 'id'=2 or 'cost'=9.9 and 'id'=4 and 'active'=true"));
+//        System.out.println(Pattern.matches("\\%(.*?)\\%", "%string%%"));
+//        System.out.println(Pattern.matches("^\\%.+", "%string%"));
+//        System.out.println(Pattern.matches(".+\\%$", "dfnnfi%"));
+//        System.out.println(Pattern.matches("[lastName=](.*?),", "lastName=Vio,"));
+//        var p1 = Pattern.compile("(?<=%)(.*?)(?=%)");
+//        var p2 = Pattern.compile("(?<=%).*");
+//        var p3 = Pattern.compile("(.*)(?=%)");
+//        var p10 = Pattern.compile("(?<=%)(.*?)(?=%)");
+//        System.out.println(Pattern.matches(".+%$", "%ast"));
+////        var p4 = Pattern.compile("(?<='lastName'=).*", Pattern.CASE_INSENSITIVE);
+////////        var p5 = Pattern.compile("(?<='lastName'=).*( )", Pattern.CASE_INSENSITIVE);
+//        var m = p10.matcher("%ast%");
+//        while (m.find()) {
+//            System.out.println(m.group());
+//        }
+
+        System.out.println(test.execute("insert values 'lastName'=ViRio, 'age'=10, 'cost'=9.6, 'active' = true ,  'id'=1"));
+        System.out.println(test.execute("insert values 'lastName'=chRis, 'age'=10, 'cost'=9.6, 'active' = true ,  'id'=2"));
+        System.out.println(test.execute("insert values 'lastName'=riLl, 'age'=10, 'cost'=9.6, 'active' = true ,  'id'=3"));
+        System.out.println(test.execute("insert values 'lastName' = kRirill, 'age'=10, 'cost'=9.9, 'active' = true ,  'id'=4"));
+//        System.out.println(test.execute("select"));
+//        System.out.println(test.execute("delete where 'lastname' like '%rill%' and 'age'=10 or 'id'=2"));
+        System.out.println(test.execute("select where 'lastName' ilike '%rill%'"));
+//        System.out.println(test.execute("update values 'age'=0, 'cost'=0, 'active'=null, 'lastName'=Kirill where 'lastName' ilike '%krir%'"));
+//        System.out.println(test.execute("select where 'lastName'=vio or 'id'like2 or 'cost'=9.9 and 'id'=4 and 'active'=true"));
         // протестировать все операторы + дописать like + добавить проверки, что like только с String + уточнить по поводу возвращаемых значений + поправить мелкие косяки (комментарии) + код вылизать
 //        System.out.println(test.execute("update values 'lastName'='0', 'age'=0, 'cost'=0, 'active'=null where 'active'!=false"));
 //        System.out.println(test.execute("insert values 'lastName'='kevin', 'age'=5, 'cost'=10.105, 'active' = false ,  'id'=1"));

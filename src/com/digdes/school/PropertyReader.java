@@ -1,6 +1,7 @@
 package com.digdes.school;
 
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static com.digdes.school.Commands.*;
@@ -10,13 +11,23 @@ public class PropertyReader {
     private static final char propertyBracket = '\'';
     private static final int readSingle = 1;
     private static final int readNormal = 0;
+
+    private final List<ConditionContainer> properties = new ArrayList<>();
+
+
     private StringBuilder incomingRequest;
     private StringBuilder beforeWhere;
     private StringBuilder afterWhere;
-    private final List<ConditionContainer> properties = new ArrayList<>();
-
     private int stateReaderProperties = 0;
+    private String originRequest;
 
+
+    String originalStringPropertyVal;
+    String originalStringCondVal;
+
+    public PropertyReader(String originRequest) {
+        this.originRequest = originRequest;
+    }
 
     public List<ConditionContainer> readRequestProperties(String[] request) {
         if (stateReaderProperties == readSingle) {
@@ -25,6 +36,21 @@ public class PropertyReader {
             cutTheRequest(request);
             incomingRequest = beforeWhere;
         }
+        originRequest = originRequest.replaceAll(" ", "");
+        if (!request[0].equals(INSERT)) {
+            String splitBy = getStrByRegex("where", originRequest);
+            if (splitBy.isEmpty()) {
+                originalStringPropertyVal = fillForOriginValues(originRequest);
+            } else {
+                String[] temp = originRequest.split(splitBy);
+                originalStringPropertyVal = fillForOriginValues(temp[0]);
+                originalStringCondVal = fillForOriginValues(temp[1]);
+            }
+        } else {
+            originalStringPropertyVal = fillForOriginValues(originRequest);
+            originalStringCondVal = fillForOriginValues(originRequest);
+        }
+
         if (request[0].equals(DELETE) || request[0].equals(SELECT)) return null;
         StringBuilder property = new StringBuilder();
         StringBuilder value = new StringBuilder();
@@ -48,7 +74,7 @@ public class PropertyReader {
                     isOperatorWriting = true;
                 }
             }
-            if (isOperatorWriting && currChar != propertyBracket) { // stateReaderProperties == readSingle &&;
+            if (isOperatorWriting && currChar != propertyBracket) {
                 if ((operator.toString().equals(">") || operator.toString().equals("<"))
                         && currChar == '=') operator.append(currChar);
                 if (isValidOperatorName(operator) || currChar == ',') {
@@ -75,10 +101,18 @@ public class PropertyReader {
             if (isValueWriting && (i == incomingRequest.length() - 1 || incomingRequest.charAt(nextPos) == ','))
                 isValueWriting = false;
             if (!isPropertyWriting && !isValueWriting) {
-                if (property.toString().equals("lastname")) property = new StringBuilder("lastName");
+                if (property.toString().equals("lastname")) {
+                    property = new StringBuilder("lastName");
+                    if (stateReaderProperties == readSingle) {
+                        value = new StringBuilder(originalStringCondVal);
+                    } else {
+                        value = new StringBuilder(originalStringPropertyVal);
+                    }
+
+                }
                 final StringBuilder finalProperty = property;
                 boolean alreadyExistsProp = properties.stream()
-                        .anyMatch(item -> item.property.equals(finalProperty.toString()));
+                        .anyMatch(item -> item.getProperty().equals(finalProperty.toString()));
                 if (!Data.columns.contains(property.toString()) || alreadyExistsProp) {
                     throw new IllegalArgumentException();
                 }
@@ -94,6 +128,40 @@ public class PropertyReader {
         final var result = new ArrayList<>(properties);
         properties.clear();
         return result;
+    }
+
+    private String getStrByRegex(String regex, String str) {
+        var p = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
+        var m = p.matcher(str);
+        String res = "";
+        while (m.find()) {
+            res = m.group();
+        }
+        return res;
+    }
+
+    private String fillForOriginValues(String request) {
+        String value = getStrByRegex("(?<='lastName'=).*?(?=,)", request);
+        if (value.isEmpty())
+            value = getStrByRegex("(?<='lastName'=).*(?=and)", request);
+        if (value.isEmpty())
+            value = getStrByRegex("(?<='lastName'=).*(?=or)", request);
+        if (value.isEmpty())
+            value = getStrByRegex("(?<='lastName'=).*", request);
+        if (value.isEmpty())
+            value = getStrByRegex("(?<='lastName'!=).*(?=,)", request);
+        if (value.isEmpty())
+            value = getStrByRegex("(?<='lastName'!=).*(?=and)", request);
+        if (value.isEmpty())
+            value = getStrByRegex("(?<='lastName'!=).*(?=or)", request);
+        if (value.isEmpty())
+            value = getStrByRegex("(?<='lastName'!=).*", request);
+        if (value.isEmpty())
+            value = getStrByRegex("(?<='lastName'ilike').*?(?=')", request);
+        if (value.isEmpty())
+            value = getStrByRegex("(?<='lastName'like').*?(?=')", request);
+        // рассмотреть все варианты и проверить их.
+        return value.trim();
     }
 
     private boolean isValidOperatorName(StringBuilder operator) {

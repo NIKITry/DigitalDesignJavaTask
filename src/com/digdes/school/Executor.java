@@ -2,6 +2,7 @@ package com.digdes.school;
 
 import java.util.*;
 import java.util.function.Function;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import com.digdes.school.PropertyReader.*;
@@ -12,10 +13,11 @@ import static com.digdes.school.Operations.*;
 public class Executor implements Function<String, List<Map<String, Object>>> {
     List<Map<String, Object>> data = Data.dataTable;
 
-    private final PropertyReader reader = new PropertyReader();
+    private PropertyReader reader;
 
     @Override
     public List<Map<String, Object>> apply(String request) {
+        reader = new PropertyReader(request);
         String[] arrayFromRequest = filter(request);
         String firstRequestWord = arrayFromRequest[0];
         if (isSingleCommand(arrayFromRequest, firstRequestWord)) {
@@ -40,8 +42,6 @@ public class Executor implements Function<String, List<Map<String, Object>>> {
             return resolverForUpdateWithoutCond(properties);
         }
         return commonResolver(conditions, firstRequestWord, properties);
-
-//        throw new UnsupportedOperationException();
     }
 
     private List<Map<String, Object>> resolverForUpdateWithoutCond(List<ConditionContainer> properties) {
@@ -58,10 +58,10 @@ public class Executor implements Function<String, List<Map<String, Object>>> {
         return Data.dataTable;
     }
 
-    private List<Map<String, Object>> commonResolver(List<List<ConditionContainer>> conditions, String firstRequestWord, List<ConditionContainer> properties) {
+    private List<Map<String, Object>> commonResolver(List<List<ConditionContainer>> conditions, String firstRequestWord,
+                                                     List<ConditionContainer> properties) {
         List<Integer> correctRows = new ArrayList<>();
-        boolean isValidGroupConds = true;
-        // этот метод подсчитывает ряды в таблице, которые подходят под условие
+        boolean isValidGroupConds;
         for (Map<String, Object> row : Data.dataTable) {
             for (var groupCond : conditions) {
                 isValidGroupConds = true;
@@ -107,24 +107,57 @@ public class Executor implements Function<String, List<Map<String, Object>>> {
     }
 
     private boolean isRightConditionForRow(ConditionContainer cond, Map<String, Object> row) {
-        int expectedRes = -2;
-        int result = -3;
         final String property = cond.getProperty();
         final var propertyValue = row.get(property);
         final var condValue = cond.getValue();
         switch (cond.getOperator()) {
-            case equals, notEquals, lessThan, greaterThan, lessThanStrictly, greaterThanStrictly-> {
+            case equals, notEquals, lessThan, greaterThan, lessThanStrictly, greaterThanStrictly -> {
                 return compareResolver(property, propertyValue, condValue, cond.getOperator());
             }
-            case like -> {
-
-            }
-            case ilike -> {
+            case like, ilike -> {
+                if (!property.equals("lastName")) throw new IllegalArgumentException();
+                String innerValue;
+                String clonePrValue = ((String) propertyValue);
+                boolean isIlike = cond.getOperator().equals("ilike");
+                if (isIlike) {
+                    clonePrValue = ((String) propertyValue).toLowerCase();
+                }
+                if (Pattern.matches("%(.*?)%", condValue)) {
+                    innerValue = subStringByRegEx("(?<=%)(.*?)(?=%)", condValue, false);
+                    if (isIlike) innerValue = innerValue.toLowerCase();
+                    return (clonePrValue).contains(innerValue);
+                }
+                if (Pattern.matches("^%.+", condValue)) {
+                    innerValue = subStringByRegEx("(?<=%).*", condValue, false);
+                    if (isIlike) innerValue = innerValue.toLowerCase();
+                    return (clonePrValue).startsWith(innerValue);
+                }
+                if (Pattern.matches(".+%$", condValue)) {
+                    innerValue = subStringByRegEx("(.*)(?=%)", condValue, false);
+                    if (isIlike) innerValue = innerValue.toLowerCase();
+                    return (clonePrValue).endsWith(innerValue);
+                }
+                return clonePrValue.equals(condValue);
             }
             default -> throw new IllegalArgumentException();
         }
-        return false;
     }
+
+    private String subStringByRegEx(String regex, String str, boolean caseInsensitive) {
+        Pattern p;
+        if (caseInsensitive) {
+            p = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
+        } else {
+            p = Pattern.compile(regex);
+        }
+        var m = p.matcher(str);
+        String res = "";
+        while (m.find()) {
+            res = m.group();
+        }
+        return res;
+    }
+
 
     private boolean compareResolver(String property, Object propertyValue,
                                     String condValue, String op) {
@@ -147,16 +180,16 @@ public class Executor implements Function<String, List<Map<String, Object>>> {
             case "age", "id", "cost" -> {
                 final int res;
                 if (property.equals("cost")) {
-                    res = Double.compare(Double.parseDouble(condValue), (Double) propertyValue);
+                    res = Double.compare((Double) propertyValue, Double.parseDouble(condValue));
                 } else {
-                    res = Long.compare(Long.parseLong(condValue), (Long) propertyValue);
+                    res = Long.compare((Long) propertyValue, Long.parseLong(condValue));
                 }
                 if (!isStrictly) return (res == expectedRes || res == 0);
                 return res == expectedRes;
             }
             case "lastName" -> {
                 operatorValidate(op);
-                return propertyValue.equals(condValue); // сравнение строк, а не ссылок, ведь так?)
+                return propertyValue.equals(condValue);
             }
             case "active" -> {
                 operatorValidate(op);
@@ -187,11 +220,11 @@ public class Executor implements Function<String, List<Map<String, Object>>> {
         }
         Data.columns.stream().filter(key -> !row.containsKey(key)).forEach(key -> row.put(key, null));
         Data.dataTable.add(row);
-        return Data.dataTable;
+        return List.of(row);
     }
 
     private void putOrUpdateKeyValueIfCorrect(String key, String value, Map<String, Object> row) {
-        switch (key) { // проверки типов обернуть в отдельный метод?
+        switch (key) {
             case "id", "age" -> row.put(key, Long.parseLong(value));
             case "cost" -> row.put(key, Double.parseDouble(value));
             case "active" -> row.put(key, valueOfBoolean(value));
@@ -214,10 +247,11 @@ public class Executor implements Function<String, List<Map<String, Object>>> {
     }
 
     private List<Map<String, Object>> takeOrDeleteAll(String firstRequestWord) {
+        var res = List.copyOf(Data.dataTable);
         if (firstRequestWord.equals(DELETE)) {
             Data.dataTable.clear();
         }
-        return Data.dataTable;
+        return res;
     }
 
     private String[] filter(String request) {
@@ -241,16 +275,17 @@ public class Executor implements Function<String, List<Map<String, Object>>> {
         var secRequestWord = arrayFromRequest[1];
         switch (firstRequestWord) {
             case INSERT -> {
-                if (!secRequestWord.equals(VALUES) || request.contains(WHERE)) {
+                if (!secRequestWord.equals(VALUES) || request.contains(WHERE))
                     throw new IllegalArgumentException();
-                }
             }
             case UPDATE -> {
-                if (!secRequestWord.equals(VALUES)) {
+                if (!secRequestWord.equals(VALUES))
                     throw new IllegalArgumentException();
-                }
             }
-//            case DELETE, SELECT -> throw new UnsupportedOperationException();
+            case DELETE, SELECT -> {
+                if (!secRequestWord.equals(WHERE))
+                    throw new UnsupportedOperationException();
+            }
         }
     }
 
